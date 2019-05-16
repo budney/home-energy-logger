@@ -40,8 +40,12 @@ preferences {
     section("Home Energy Monitor") {
     	input "theMeter", "capability.energyMeter", required: true
     }
-	section("Thermostat") {
-		input "theThermostat", "capability.temperatureMeasurement", required: false
+    section("Thermostat") {
+		input "theThermostat", "capability.thermostat", required: true
+	}
+	section("Thermometers") f
+		input "indoorTemp", "capability.temperatureMeasurement", required: false, title: "Indoors"
+		input "outdoorTemp", "capability.temperatureMeasurement", required: false, title: "Outdoors"
 	}
 	section("Check Interval") {
     	input "interval", "number", required: true, title: "Minutes?", submitOnChange: true
@@ -67,15 +71,17 @@ def updated() {
 
 def initialize() {
 	// Initialize state from the thermostat
-    readThermostat(theThermostat)
-    
+    readThermostat()
+
 	// Subscribe to thermostat state changes
     subscribe(theThermostat, "thermostatOperatingState.heating", thermostatEvent)
     subscribe(theThermostat, "thermostatOperatingState.idle", thermostatEvent)
     subscribe(theThermostat, "thermostatOperatingState.cooling", thermostatEvent)
     subscribe(theThermostat, "thermostatMode", thermostatEvent)
-    subscribe(theThermostat, "temperature", thermostatEvent)
-    subscribe(theThermostat, "outdoorTemperature", thermostatEvent)
+    
+    // Subscribe to temperature changes
+    subscribe(indoorTemp, "temperature", thermostatEvent)
+    subscribe(outdoorTemp, "temperature", thermostatEvent)
     
     // Subscribe to energy meter to detect updates
     subscribe(theMeter, "energy", meterEvent)
@@ -86,26 +92,26 @@ def initialize() {
 
 // Generic event handler for the thermostat
 def thermostatEvent(evt) {
-	readThermostat(theThermostat)
+	readThermostat()
 }
 
 // From the thermostat, find out the indoor/outdoor temperatures and
 // whether the furnace or AC are running.
-def readThermostat(thermostat) {
-	state.indoorTemperature = thermostat.currentValue("temperature")
-    def outdoorTemperature = thermostat.currentValue("outdoorTemperature")
+def readThermostat() {
+	state.indoorTemperature = indoorTemp.currentValue("temperature")
+    def outdoorTemperature = outdoorTemp.currentValue("temperature")
     if (outdoorTemperature && 212 > outdoorTemperature) {
 	    state.outdoorTemperature = outdoorTemperature
     }
     
     // Check if heat or AC is running:
-    if (thermostat.currentValue("thermostatMode") == "off") {
+    if (theThermostat.currentValue("thermostatMode") == "off") {
     	state.heatingState = 0
     	state.coolingState = 0
     }
     else {
-    	state.heatingState = thermostat.currentValue("thermostatOperatingState") == "heating" ? true : false
-    	state.coolingState = thermostat.currentValue("thermostatOperatingState") == "cooling" ? true : false
+    	state.heatingState = theThermostat.currentValue("thermostatOperatingState") == "heating" ? true : false
+    	state.coolingState = theThermostat.currentValue("thermostatOperatingState") == "cooling" ? true : false
     }
 }
 

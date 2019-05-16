@@ -38,46 +38,46 @@ definition(
 
 preferences {
     section("Home Energy Monitor") {
-    	input "theMeter", "capability.energyMeter", required: true
+        input "theMeter", "capability.energyMeter", required: true
     }
     section("Thermostat") {
-		input "theThermostat", "capability.thermostat", required: true
-	}
-	section("Thermometers") f
-		input "indoorTemp", "capability.temperatureMeasurement", required: false, title: "Indoors"
-		input "outdoorTemp", "capability.temperatureMeasurement", required: false, title: "Outdoors"
-	}
-	section("Hygrometers") f
-		input "indoorHumidity", "capability.relativeHumidityMeasurement", required: false, title: "Indoors"
-		input "outdoorHumidity", "capability.relativeHumidityMeasurement", required: false, title: "Outdoors"
-	}
-	section("Check Interval") {
-    	input "interval", "number", required: true, title: "Minutes?", submitOnChange: true
+        input "theThermostat", "capability.thermostat", required: true
     }
-	section("Elasticsearch") {
-    	input "indexPrefix", "text", required: true, title: "Prefix"
+    section("Thermometers") f
+        input "indoorTemp", "capability.temperatureMeasurement", required: false, title: "Indoors"
+        input "outdoorTemp", "capability.temperatureMeasurement", required: false, title: "Outdoors"
+    }
+    section("Hygrometers") f
+        input "indoorHumidity", "capability.relativeHumidityMeasurement", required: false, title: "Indoors"
+        input "outdoorHumidity", "capability.relativeHumidityMeasurement", required: false, title: "Outdoors"
+    }
+    section("Check Interval") {
+        input "interval", "number", required: true, title: "Minutes?", submitOnChange: true
+    }
+    section("Elasticsearch") {
+        input "indexPrefix", "text", required: true, title: "Prefix"
         input "indexHost", "text", required: true, title: "Host:Port"
     }
 }
 
 def installed() {
-	log.debug "Installed with settings: ${settings}"
+    log.debug "Installed with settings: ${settings}"
 
-	initialize()
+    initialize()
 }
 
 def updated() {
-	log.debug "Updated with settings: ${settings}"
+    log.debug "Updated with settings: ${settings}"
 
-	unsubscribe()
-	initialize()
+    unsubscribe()
+    initialize()
 }
 
 def initialize() {
-	// Initialize state from the thermostat
+    // Initialize state from the thermostat
     readThermostat()
 
-	// Subscribe to thermostat state changes
+    // Subscribe to thermostat state changes
     subscribe(theThermostat, "thermostatOperatingState.heating", thermostatEvent)
     subscribe(theThermostat, "thermostatOperatingState.idle", thermostatEvent)
     subscribe(theThermostat, "thermostatOperatingState.cooling", thermostatEvent)
@@ -100,7 +100,7 @@ def initialize() {
 
 // Generic event handler for the thermostat
 def thermostatEvent(evt) {
-	readThermostat()
+    readThermostat()
 }
 
 // From the thermostat, find out the indoor/outdoor temperatures and
@@ -111,27 +111,27 @@ def readThermostat() {
     state.outdoorHumidity = outdoorHumidity.currentValue("humidity")
 
     // Temperature
-	state.indoorTemperature = indoorTemp.currentValue("temperature")
+    state.indoorTemperature = indoorTemp.currentValue("temperature")
     def outdoorTemperature = outdoorTemp.currentValue("temperature")
     if (outdoorTemperature && 212 > outdoorTemperature) {
-	    state.outdoorTemperature = outdoorTemperature
+        state.outdoorTemperature = outdoorTemperature
     }
 
     // Check if heat or AC is running:
     if (theThermostat.currentValue("thermostatMode") == "off") {
-    	state.heatingState = 0
-    	state.coolingState = 0
+        state.heatingState = 0
+        state.coolingState = 0
     }
     else {
-    	state.heatingState = theThermostat.currentValue("thermostatOperatingState") == "heating" ? true : false
-    	state.coolingState = theThermostat.currentValue("thermostatOperatingState") == "cooling" ? true : false
+        state.heatingState = theThermostat.currentValue("thermostatOperatingState") == "heating" ? true : false
+        state.coolingState = theThermostat.currentValue("thermostatOperatingState") == "cooling" ? true : false
     }
 }
 
 // Refresh the energy meter. When it finishes, the subscribed attributes will cause
 // the new reading to be logged.
 def refreshMeter() {
-	theMeter.refresh()
+    theMeter.refresh()
 
     // Do it again!
     runIn(60 * interval, refreshMeter)
@@ -139,7 +139,7 @@ def refreshMeter() {
 
 // Generic event handler for the meter
 def meterEvent(evt) {
-	readMeter(theMeter)
+    readMeter(theMeter)
 }
 
 // Check energy consumption on the home energy meter, emitting a log
@@ -147,7 +147,7 @@ def meterEvent(evt) {
 def readMeter(meter) {
     // Get the new readings from the meter
     def current = [
-    	timestamp: now(),
+        timestamp: now(),
         energy: meter.currentValue("energy"),
         power: meter.currentValue("power"),
         power1: meter.currentValue("power1"),
@@ -158,7 +158,7 @@ def readMeter(meter) {
     if (state.lastMeterReadingTimestamp) {
         // Get the readings from this app's state
         def previous = [
-        	timestamp: state.lastMeterReadingTimestamp,
+            timestamp: state.lastMeterReadingTimestamp,
             energy: state.lastMeterReadingEnergy,
             power: state.lastMeterReadingPower,
             power1: state.lastMeterReadingPower1,
@@ -188,9 +188,9 @@ def readMeter(meter) {
 
 // Store the latest update in elasticsearch
 def logEvent(readings) {
-	def indexName = indexName()
+    def indexName = indexName()
 
-	try {
+    try {
         def request = new physicalgraph.device.HubAction(
             method: "POST",
             path: "/$indexName/doc",
@@ -201,17 +201,17 @@ def logEvent(readings) {
             null,
             [ callback: elasticsearchResponse ]
         )
-		log.debug "request {$request}"
+        log.debug "request {$request}"
         sendHubCommand(request)
     }
     catch (Exception e) {
-    	log.error "Caught exception $e calling elasticsearch"
+        log.error "Caught exception $e calling elasticsearch"
     }
 }
 
 // Derive the index name to store readings
 String indexName() {
-	def prefix = indexPrefix
+    def prefix = indexPrefix
     def datestamp = new Date().format("yyyy.MM.dd", TimeZone.getTimeZone('UTC'))
 
     return "$prefix-$datestamp"
@@ -222,10 +222,10 @@ Map dataEntry(readings) {
     def elapsed = readings.current.timestamp - readings.previous.timestamp
     def probe1_ratio = asInt(readings.current.power1) / (asInt(readings.current.power1) + asInt(readings.current.power2))
 
-	def entry = [
-    	"@timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
+    def entry = [
+        "@timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
         electricity: [
-        	timestamp: new Date(state.lastMeterReadingTimestamp).format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
+            timestamp: new Date(state.lastMeterReadingTimestamp).format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
             period_seconds: elapsed / 1000,
             total: [
                 kwh: [
@@ -263,16 +263,16 @@ Map dataEntry(readings) {
             ],
         ],
         hvac: [
-        	heating: [
-            	on: state.heatingState,
+            heating: [
+                on: state.heatingState,
                 setpoint: theThermostat.currentValue("heatingSetpoint"),
             ],
             cooling: [
-            	on: state.coolingState,
+                on: state.coolingState,
                 setpoint: theThermostat.currentValue("coolingSetpoint"),
             ],
             temperature: [
-            	indoor: state.indoorTemperature,
+                indoor: state.indoorTemperature,
                 // Outdoor temp is filled in below
             ],
         ],
@@ -281,27 +281,27 @@ Map dataEntry(readings) {
     // Missing weather data is reported as 32,768 degrees. We only report the
     // temperature outside if the seas aren't boiling.
     if (state.outdoorTemperature < 212) {
-    	entry.hvac.temperature.outdoor = state.outdoorTemperature
+        entry.hvac.temperature.outdoor = state.outdoorTemperature
     }
 
     return entry
 }
 
 int asInt(value) {
-	if (!value) {
-    	return value
+    if (!value) {
+        return value
     }
 
     try {
-    	return value as Integer
+        return value as Integer
     }
     catch (Exception e) {
-    	log.error "Caught exception $e converting '$value' to integer"
+        log.error "Caught exception $e converting '$value' to integer"
         return null
     }
 }
 
 void elasticsearchResponse(hubResponse) {
-	log.debug "hubResponse: status {$hubResponse.status}: {$hubResponse}"
+    log.debug "hubResponse: status {$hubResponse.status}: {$hubResponse}"
 }
 

@@ -144,7 +144,7 @@ def meterEvent(evt) {
 
 // Check energy consumption on the home energy meter, emitting a log
 // message giving statistics since the previous reading
-def readMeter(meter) {    
+def readMeter(meter) {
     // Get the new readings from the meter
     def current = [
     	timestamp: now(),
@@ -181,7 +181,7 @@ def readMeter(meter) {
     // Save the current state of the meter
     state.lastMeterReadingTimestamp = current.timestamp
     state.lastMeterReadingEnergy = current.energy
-    state.lastMeterReadingPower = current.power    
+    state.lastMeterReadingPower = current.power
     state.lastMeterReadingPower1 = current.power1
     state.lastMeterReadingPower2 = current.power2
 }

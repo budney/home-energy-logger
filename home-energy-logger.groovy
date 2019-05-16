@@ -82,7 +82,7 @@ def initialize() {
     subscribe(theThermostat, "thermostatOperatingState.idle", thermostatEvent)
     subscribe(theThermostat, "thermostatOperatingState.cooling", thermostatEvent)
     subscribe(theThermostat, "thermostatMode", thermostatEvent)
-    
+
     // Subscribe to temperature changes
     subscribe(indoorTemp, "temperature", thermostatEvent)
     subscribe(outdoorTemp, "temperature", thermostatEvent)
@@ -93,7 +93,7 @@ def initialize() {
 
     // Subscribe to energy meter to detect updates
     subscribe(theMeter, "energy", meterEvent)
-    
+
     // Update energy consumption state
     refreshMeter()
 }
@@ -132,7 +132,7 @@ def readThermostat() {
 // the new reading to be logged.
 def refreshMeter() {
 	theMeter.refresh()
-    
+
     // Do it again!
     runIn(60 * interval, refreshMeter)
 }
@@ -189,7 +189,7 @@ def readMeter(meter) {
 // Store the latest update in elasticsearch
 def logEvent(readings) {
 	def indexName = indexName()
-    
+
 	try {
         def request = new physicalgraph.device.HubAction(
             method: "POST",
@@ -213,7 +213,7 @@ def logEvent(readings) {
 String indexName() {
 	def prefix = indexPrefix
     def datestamp = new Date().format("yyyy.MM.dd", TimeZone.getTimeZone('UTC'))
-    
+
     return "$prefix-$datestamp"
 }
 
@@ -277,13 +277,13 @@ Map dataEntry(readings) {
             ],
         ],
     ]
-    
+
     // Missing weather data is reported as 32,768 degrees. We only report the
     // temperature outside if the seas aren't boiling.
     if (state.outdoorTemperature < 212) {
     	entry.hvac.temperature.outdoor = state.outdoorTemperature
     }
-    
+
     return entry
 }
 
@@ -291,7 +291,7 @@ int asInt(value) {
 	if (!value) {
     	return value
     }
-    
+
     try {
     	return value as Integer
     }

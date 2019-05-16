@@ -74,22 +74,26 @@ def updated() {
 }
 
 def initialize() {
-    // Initialize state from the thermostat
-    readThermostat()
+    // Update the state
+    oldReadMeter(theMeter)
 
     // Subscribe to thermostat state changes
-    subscribe(theThermostat, "thermostatOperatingState.heating", thermostatEvent)
-    subscribe(theThermostat, "thermostatOperatingState.idle", thermostatEvent)
-    subscribe(theThermostat, "thermostatOperatingState.cooling", thermostatEvent)
-    subscribe(theThermostat, "thermostatMode", thermostatEvent)
+    subscribe(theThermostat, "thermostatOperatingState.heating", hvacHandler)
+    subscribe(theThermostat, "thermostatOperatingState.idle", hvacHandler)
+    subscribe(theThermostat, "thermostatOperatingState.cooling", hvacHandler)
+    subscribe(theThermostat, "thermostatMode.off", hvacHandler)
+
+    // Subscribe to changes in the temperature setpoints
+    subscribe(theThermostat, "heatingSetpoint", {evt -> state.report.hvac.heating.setpoint = evt.value})
+    subscribe(theThermostat, "coolingSetpoint", {evt -> state.report.hvac.cooling.setpoint = evt.value})
 
     // Subscribe to temperature changes
-    subscribe(indoorTemp, "temperature", thermostatEvent)
-    subscribe(outdoorTemp, "temperature", thermostatEvent)
+    subscribe(indoorTemp, "temperature", getClimateHandler(state.report.climate.indoor.temperature))
+    subscribe(outdoorTemp, "temperature", getClimateHandler(state.report.climate.outdoor.temperature))
 
     // Subscribe to humidity changes
-    subscribe(indoorHumidity, "humidity", thermostatEvent)
-    subscribe(outdoorHumidity, "humidity", thermostatEvent)
+    subscribe(indoorHumidity, "humidity", getClimateHandler(state.report.climate.indoor.humidity))
+    subscribe(outdoorHumidity, "humidity", getClimateHandler(state.report.climate.outdoor.humidity))
 
     // Subscribe to energy meter to detect updates
     subscribe(theMeter, "energy", meterEvent)
@@ -139,12 +143,29 @@ def refreshMeter() {
 
 // Generic event handler for the meter
 def meterEvent(evt) {
-    readMeter(theMeter)
+    oldReadMeter(theMeter)
+    readMeter(evt)
+}
+
+void readMeter(evt) {
+    if (!state.report) {
+        return
+    }
+
+    def meter = evt.device
+    def report = state.report
 }
 
 // Check energy consumption on the home energy meter, emitting a log
 // message giving statistics since the previous reading
-def readMeter(meter) {
+void oldReadMeter(meter) {
+    if (state.report) {
+        return
+    }
+
+    // Update thermostat info
+    readThermostat()
+
     // Get the new readings from the meter
     def current = [
         timestamp: now(),
@@ -175,20 +196,27 @@ def readMeter(meter) {
         // Emit the stats in some useful way
         log.info "House using $power Watts, consumed $consumption kWh/month for last $minutes minutes"
         log.debug state
-        logEvent(["current": current, "previous": previous])
+        state.report = logEvent(["current": current, "previous": previous])
     }
 
-    // Save the current state of the meter
-    state.lastMeterReadingTimestamp = current.timestamp
-    state.lastMeterReadingEnergy = current.energy
-    state.lastMeterReadingPower = current.power
-    state.lastMeterReadingPower1 = current.power1
-    state.lastMeterReadingPower2 = current.power2
+    // Log the state, just in case
+    log.debug "Old state: ${state}"
+
+    // Update the state
+    def report = state.report
+    state.removeAll {true}
+    state.report = state
+
+    // Log it again, just to check
+    log.debug "New state: ${state}"
+
+    return
 }
 
 // Store the latest update in elasticsearch
 def logEvent(readings) {
     def indexName = indexName()
+    def logEntry = dataEntry(readings)
 
     try {
         def request = new physicalgraph.device.HubAction(
@@ -197,7 +225,7 @@ def logEvent(readings) {
             headers: [
                 "HOST": indexHost
             ],
-            body: dataEntry(readings),
+            body: logEntry
             null,
             [ callback: elasticsearchResponse ]
         )
@@ -207,6 +235,8 @@ def logEvent(readings) {
     catch (Exception e) {
         log.error "Caught exception $e calling elasticsearch"
     }
+
+    return logEntry
 }
 
 // Derive the index name to store readings
@@ -217,15 +247,42 @@ String indexName() {
     return "$prefix-$datestamp"
 }
 
+// Handler for changes to heating/cooling state
+def hvacHandler(evt) {
+    log.info evt.descriptionText
+
+    def thermostat = evt.device
+    def newState = evt.stringValue
+    def timestamp = evt.date.format("yyyy.MM.dd", TimeZone.getTimeZone('UTC'))
+
+    // Backward compatibility for now
+    oldReadMeter(thermostat)
+
+    // Update the report object with the new furnace state
+    state.report.hvac.heating.on = (newState == "heating") ? true : false
+    state.report.hvac.cooling.on = (newState == "cooling") ? true : false
+    state.report.hvac.timestamp = timestamp
+}
+
+// Handler for changes in temperature and humidity
+def getClimateHandler(where) {
+    return {evt ->
+        log.info evt.descriptionText
+        where.value = evt.value
+        where.timestamp = evt.date.format("yyyy.MM.dd", TimeZone.getTimeZone('UTC'))
+    }
+}
+
 // Construct the actual map of data to store in Elasticsearch
 Map dataEntry(readings) {
     def elapsed = readings.current.timestamp - readings.previous.timestamp
     def probe1_ratio = asInt(readings.current.power1) / (asInt(readings.current.power1) + asInt(readings.current.power2))
+    def timestamp = new Date(state.lastMeterReadingTimestamp).format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC'))
 
     def entry = [
         "@timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
         electricity: [
-            timestamp: new Date(state.lastMeterReadingTimestamp).format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
+            timestamp: timestamp
             period_seconds: elapsed / 1000,
             total: [
                 kwh: [
@@ -263,6 +320,7 @@ Map dataEntry(readings) {
             ],
         ],
         hvac: [
+            timestamp: timestamp
             heating: [
                 on: state.heatingState,
                 setpoint: theThermostat.currentValue("heatingSetpoint"),
@@ -270,19 +328,31 @@ Map dataEntry(readings) {
             cooling: [
                 on: state.coolingState,
                 setpoint: theThermostat.currentValue("coolingSetpoint"),
-            ],
-            temperature: [
-                indoor: state.indoorTemperature,
-                // Outdoor temp is filled in below
-            ],
+            ]
         ],
+        climate: [
+            indoor: [
+                temperature: [
+                    value: state.indoorTemperature,
+                    timestamp: timestamp
+                ],
+                humidity: [
+                    value: state.indoorHumidity,
+                    timestamp: timestamp
+                ]
+            ],
+            outdoor: [
+                temperature: [
+                    value: state.outdoorTemperature,
+                    timestamp: timestamp
+                ],
+                humidity: [
+                    value: state.outdoorHumidity,
+                    timestamp: timestamp
+                ]
+            ],
+        ]
     ]
-
-    // Missing weather data is reported as 32,768 degrees. We only report the
-    // temperature outside if the seas aren't boiling.
-    if (state.outdoorTemperature < 212) {
-        entry.hvac.temperature.outdoor = state.outdoorTemperature
-    }
 
     return entry
 }

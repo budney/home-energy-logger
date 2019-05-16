@@ -146,6 +146,9 @@
           },
           "hvac" : {
               "properties" : {
+                  "timestamp" : {
+                    "type" : "date"
+                  },
                   "heating" : {
                       "properties" : {
                           "on" : {
@@ -166,13 +169,55 @@
                           }
                       }
                   },
-                  "temperature" : {
+                  "climate" : {
                       "properties" : {
                           "indoor" : {
-                              "type" : "integer"
+                              "properties" : {
+                                  "temperature" : {
+                                      "properties" : {
+                                          "value" : {
+                                              "type" : "integer"
+                                          },
+                                          "timestamp" : {
+                                              "type" : "date"
+                                          }
+                                      }
+                                  },
+                                  "humidity" : {
+                                      "properties" : {
+                                          "value" : {
+                                              "type" : "integer"
+                                          },
+                                          "timestamp" : {
+                                              "type" : "date"
+                                          }
+                                      }
+                                  }
+                              }
                           },
                           "outdoor" : {
-                              "type" : "integer"
+                              "properties" : {
+                                  "temperature" : {
+                                      "properties" : {
+                                          "value" : {
+                                              "type" : "integer"
+                                          },
+                                          "timestamp" : {
+                                              "type" : "date"
+                                          }
+                                      }
+                                  },
+                                  "humidity" : {
+                                      "properties" : {
+                                          "value" : {
+                                              "type" : "integer"
+                                          },
+                                          "timestamp" : {
+                                              "type" : "date"
+                                          }
+                                      }
+                                  }
+                              }
                           }
                       }
                   }

@@ -1,0 +1,185 @@
+{
+    "order" : 0,
+    "template" : "home-energy-*",
+    "settings" : {
+      "index" : {
+        "mapping" : {
+          "total_fields" : {
+            "limit" : "10000"
+          }
+        },
+        "refresh_interval" : "5s",
+        "number_of_shards" : "1",
+        "number_of_replicas" : "0"
+      }
+    },
+    "mappings" : {
+      "_default_" : {
+        "_meta" : {
+          "version" : "0.1.0"
+        },
+        "dynamic_templates" : [
+          {
+            "strings_as_keyword" : {
+              "mapping" : {
+                "ignore_above" : 1024,
+                "type" : "keyword"
+              },
+              "match_mapping_type" : "string"
+            }
+          }
+        ],
+        "_all" : {
+          "norms" : false
+        },
+        "date_detection" : false,
+        "properties" : {
+          "type" : {
+            "ignore_above" : 1024,
+            "type" : "keyword"
+          },
+          "tags" : {
+            "ignore_above" : 1024,
+            "type" : "keyword"
+          },
+          "@timestamp" : {
+            "type" : "date"
+          },
+          "electricity": {
+            "properties": {
+                "timestamp" : {
+                    "type" : "date"
+                },
+                "period_seconds" : {
+                    "type" : "scaled_float",
+                    "scaling_factor" : 1000
+                },
+                "total" : {
+                    "properties" : {
+                        "kwh" : {
+                            "properties" : {
+                                "cumulative" : {
+                                    "type" : "scaled_float",
+                                    "scaling_factor" : 1000
+                                },
+                                "period_total" : {
+                                    "type" : "scaled_float",
+                                    "scaling_factor" : 1000
+                                },
+                                "per_month" : {
+                                    "type" : "double"
+                                }
+                            }
+                        },
+                        "watts" : {
+                            "properties" : {
+                                "current" : {
+                                    "type": "integer"
+                                },
+                                "previous" : {
+                                    "type": "integer"
+                                },
+                                "period_average" : {
+                                    "type": "double"
+                                }
+                            }
+                        }
+                    }
+                },
+                "probe1" : {
+                    "properties" : {
+                        "kwh" : {
+                            "properties" : {
+                                "period_total" : {
+                                    "type" : "scaled_float",
+                                    "scaling_factor" : 1000
+                                },
+                                "per_month" : {
+                                    "type" : "double"
+                                }
+                            }
+                        },
+                        "watts" : {
+                            "properties" : {
+                                "current" : {
+                                    "type": "integer"
+                                },
+                                "previous" : {
+                                    "type": "integer"
+                                },
+                                "period_average" : {
+                                    "type": "double"
+                                }
+                            }
+                        }
+                    }
+                },
+                "probe2" : {
+                    "properties" : {
+                        "kwh" : {
+                            "properties" : {
+                                "period_total" : {
+                                    "type" : "scaled_float",
+                                    "scaling_factor" : 1000
+                                },
+                                "per_month" : {
+                                    "type" : "double"
+                                }
+                            }
+                        },
+                        "watts" : {
+                            "properties" : {
+                                "current" : {
+                                    "type": "integer"
+                                },
+                                "previous" : {
+                                    "type": "integer"
+                                },
+                                "period_average" : {
+                                    "type": "double"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+          },
+          "hvac" : {
+              "properties" : {
+                  "heating" : {
+                      "properties" : {
+                          "on" : {
+                              "type" : "boolean"
+                          },
+                          "setpoint" : {
+                              "type" : "integer"
+                          }
+                      }
+                  },
+                  "cooling" : {
+                      "properties" : {
+                          "on" : {
+                              "type" : "boolean"
+                          },
+                          "setpoint" : {
+                              "type" : "integer"
+                          }
+                      }
+                  },
+                  "temperature" : {
+                      "properties" : {
+                          "indoor" : {
+                              "type" : "integer"
+                          },
+                          "outdoor" : {
+                              "type" : "integer"
+                          }
+                      }
+                  }
+              }
+          }
+        }
+      }
+    },
+    "aliases" : { }
+}

@@ -47,6 +47,10 @@ preferences {
 		input "indoorTemp", "capability.temperatureMeasurement", required: false, title: "Indoors"
 		input "outdoorTemp", "capability.temperatureMeasurement", required: false, title: "Outdoors"
 	}
+	section("Hygrometers") f
+		input "indoorHumidity", "capability.relativeHumidityMeasurement", required: false, title: "Indoors"
+		input "outdoorHumidity", "capability.relativeHumidityMeasurement", required: false, title: "Outdoors"
+	}
 	section("Check Interval") {
     	input "interval", "number", required: true, title: "Minutes?", submitOnChange: true
     }
@@ -82,7 +86,11 @@ def initialize() {
     // Subscribe to temperature changes
     subscribe(indoorTemp, "temperature", thermostatEvent)
     subscribe(outdoorTemp, "temperature", thermostatEvent)
-    
+
+    // Subscribe to humidity changes
+    subscribe(indoorHumidity, "humidity", thermostatEvent)
+    subscribe(outdoorHumidity, "humidity", thermostatEvent)
+
     // Subscribe to energy meter to detect updates
     subscribe(theMeter, "energy", meterEvent)
     
@@ -98,12 +106,17 @@ def thermostatEvent(evt) {
 // From the thermostat, find out the indoor/outdoor temperatures and
 // whether the furnace or AC are running.
 def readThermostat() {
+    // Humidity
+    state.indoorHumidity = indoorHumidity.currentValue("humidity")
+    state.outdoorHumidity = outdoorHumidity.currentValue("humidity")
+
+    // Temperature
 	state.indoorTemperature = indoorTemp.currentValue("temperature")
     def outdoorTemperature = outdoorTemp.currentValue("temperature")
     if (outdoorTemperature && 212 > outdoorTemperature) {
 	    state.outdoorTemperature = outdoorTemperature
     }
-    
+
     // Check if heat or AC is running:
     if (theThermostat.currentValue("thermostatMode") == "off") {
     	state.heatingState = 0

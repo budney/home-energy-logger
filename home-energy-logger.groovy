@@ -195,6 +195,7 @@ void oldReadMeter(meter) {
 // Store the latest data in elasticsearch
 def logCurrentState() {
     def indexName = indexName()
+    state.report['@timestamp'] = new Date().format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
 
     try {
         def request = new physicalgraph.device.HubAction(

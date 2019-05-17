@@ -84,22 +84,20 @@ def initialize() {
     subscribe(theThermostat, "thermostatMode.off", hvacHandler)
 
     // Subscribe to changes in the temperature setpoints
-    subscribe(theThermostat, "heatingSetpoint", {evt -> state.report.hvac.heating.setpoint = evt.value})
-    subscribe(theThermostat, "coolingSetpoint", {evt -> state.report.hvac.cooling.setpoint = evt.value})
+    subscribe(theThermostat, "heatingSetpoint", heatingSetpointHandler)
+    subscribe(theThermostat, "coolingSetpoint", coolingSetpointHandler)
 
-    // Subscribe to temperature changes
-    subscribe(indoorTemp, "temperature", getClimateHandler(state.report.climate.indoor.temperature))
-    subscribe(outdoorTemp, "temperature", getClimateHandler(state.report.climate.outdoor.temperature))
-
-    // Subscribe to humidity changes
-    subscribe(indoorHumidity, "humidity", getClimateHandler(state.report.climate.indoor.humidity))
-    subscribe(outdoorHumidity, "humidity", getClimateHandler(state.report.climate.outdoor.humidity))
+    // Subscribe to temperature and humidity changes
+    subscribe(indoorTemp, "temperature", indoorTemperatureHandler)
+    subscribe(outdoorTemp, "temperature", outdoorTemperatureHandler)
+    subscribe(indoorHumidity, "humidity", indoorHumidityHandler)
+    subscribe(outdoorHumidity, "humidity", outdoorHumidityHandler)
 
     // Subscribe to energy meter to detect updates
     subscribe(theMeter, "energy", energyHandler)
-    subscribe(theMeter, "power", getPowerHandler(state.electricity.total))
-    subscribe(theMeter, "power1", getPowerHandler(state.electricity.probe1))
-    subscribe(theMeter, "power2", getPowerHandler(state.electricity.probe2))
+    subscribe(theMeter, "power", powerHandlerTotal)
+    subscribe(theMeter, "power1", powerHandlerProbe1)
+    subscribe(theMeter, "power2", powerHandlerProbe2)
 
     // Set off the logging loop
     loggingLoop()
@@ -265,14 +263,28 @@ def hvacHandler(evt) {
     state.report.hvac.timestamp = timestamp
 }
 
-// Handler for changes in temperature and humidity
-def getClimateHandler(where) {
-    return {evt ->
-        log.info evt.descriptionText
-        where.value = evt.value
-        where.timestamp = evt.date.format("yyyy.MM.dd", TimeZone.getTimeZone('UTC'))
-    }
+def heatingSetpointHandler(evt) {
+	log.info evt.descriptionText
+	state.report.hvac.heating.setpoint = evt.value
 }
+
+def coolingSetpointHandler(evt) {
+	log.info evt.descriptionText
+	state.report.hvac.cooling.setpoint = evt.value
+}
+
+// Generic handler for changes in temperature and humidity
+def climateHandler(evt, where) {
+    log.info evt.descriptionText
+    where.value = evt.value
+    where.timestamp = evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
+}
+
+// Stupid wrappers for the generic climate handler
+def indoorTemperatureHandler(evt) { climateHandler(evt, state.report.climate.indoor.temperature) }
+def indoorHumidityHandler(evt) { climateHandler(evt, state.report.climate.indoor.humidity) }
+def outdoorTemperatureHandler(evt) { climateHandler(evt, state.report.climate.outdoor.temperature) }
+def outdoorHumidityHandler(evt) { climateHandler(evt, state.report.climate.outdoor.humidity) }
 
 // Update the report when there's a new energy reading
 def energyHandler(evt) {
@@ -291,8 +303,8 @@ def energyHandler(evt) {
     ]
 }
 
-// Update the report when there's a new power reading
-def powerHandler(evt) {
+// Generic handler for new power readings
+def powerHandler(evt, where) {
     log.info evt.descriptionText
 
     def currentPower = evt.value
@@ -306,40 +318,25 @@ def powerHandler(evt) {
         previous: previousPower,
         period_average: (currentPower + previousPower) / 2,
     ]
-}
 
-// Update the appropriate part of the report when there's a new power reading
-def getPowerHandler(where) {
+    // We don't get a cumulative number for the probes, and we shouldn't
+    // try to estimate it, because the errors will propagate.
+    if (!where.kwh.cumulative) {
+        def kW = (currentPower + previousPower) / (2 * 1000)
+        def h  = elapsed / (1000 * 60 * 60)
 
-    return {evt ->
-        log.info evt.descriptionText
-
-        def timestamp = evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC'))
-        def currentPower = evt.value
-        def previousPower = where.watts.current
-        def previousTimestamp = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SX", where.watts.timestamp)
-        def elapsed = evt.date - previousTimestamp
-
-        where.watts = [
+        where.kwh = [
             timestamp: timestamp,
             period_total: kW * h,
             per_month: kW * h * 24 * 30,
         ]
-
-        // We don't get a cumulative number for the probes, and we shouldn't
-        // try to estimate it, because the errors will propagate.
-        if (!where.kwh.cumulative) {
-            def kW = (currentPower + previousPower) / (2 * 1000)
-            def h  = elapsed / (1000 * 60 * 60)
-
-            where.kwh = [
-                timestamp: timestamp,
-                period_total: kW * h,
-                per_month: kW * h * 24 * 30,
-            ]
-        }
     }
 }
+
+// Stupid wrappers for the generic handler
+def powerHandlerTotal(evt) { powerHandler(evt, state.report.electricity.total) }
+def powerHandlerProbe1(evt) { powerHandler(evt, state.report.electricity.probe1) }
+def powerHandlerProbe2(evt) { powerHandler(evt, state.report.electricity.probe2) }
 
 // Construct the actual map of data to store in Elasticsearch
 Map dataEntry(readings) {

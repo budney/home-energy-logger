@@ -319,7 +319,7 @@ Map dataEntry(readings) {
     return entry
 }
 
-int asInt(value) {
+Integer asInt(value) {
     if (!value) {
         return value
     }
@@ -332,6 +332,21 @@ int asInt(value) {
         return null
     }
 }
+
+Double asDouble(value) {
+    if (!value) {
+        return value
+    }
+
+    try {
+        return value as Double
+    }
+    catch (Exception e) {
+        log.error "Caught exception $e converting '$value' to integer"
+        return null
+    }
+}
+
 
 void elasticsearchResponse(hubResponse) {
     log.debug "hubResponse: status {$hubResponse.status}: {$hubResponse.json}"

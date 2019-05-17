@@ -255,7 +255,7 @@ def hvacHandler(evt) {
 
     def thermostat = evt.device
     def newState = evt.stringValue
-    def timestamp = evt.date.format("yyyy.MM.dd", TimeZone.getTimeZone('UTC'))
+    def timestamp = evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
 
     // Update the report object with the new furnace state
     state.report.hvac.heating.on = (newState == "heating") ? true : false
@@ -292,11 +292,11 @@ def energyHandler(evt) {
 
     def currentEnergy = evt.value
     def previousEnergy = state.report.electricity.total.kwh.cumulative
-    def previousTimestamp = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SX", state.report.electricity.total.kwh.timestamp)
+    def previousTimestamp = parseTimestamp(state.report.electricity.total.kwh.timestamp)
     def elapsed = evt.date - previousTimestamp
 
     state.report.electricity.total.kwh = [
-        timestamp: evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
+        timestamp: evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC')),
         cumulative: currentEnergy,
         period_total: currentEnergy - previousEnergy,
         per_month: (currentEnergy - previousEnergy) * 30 * 24 * 60 * 60 * 1000 / elapsed,
@@ -307,9 +307,10 @@ def energyHandler(evt) {
 def powerHandler(evt, where) {
     log.info evt.descriptionText
 
-    def currentPower = evt.value
-    def previousPower = state.report.electricity.total.watts.current
-    def previousTimestamp = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SX", state.report.electricity.total.watts.timestamp)
+    def timestamp = evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
+    def currentPower = asInt(evt.value)
+    def previousPower = asInt(where.watts.current)
+    def previousTimestamp = parseTimestamp(where.watts.timestamp)
     def elapsed = evt.date - previousTimestamp
 
     where.watts = [
@@ -342,10 +343,10 @@ def powerHandlerProbe2(evt) { powerHandler(evt, state.report.electricity.probe2)
 Map dataEntry(readings) {
     def elapsed = readings.current.timestamp - readings.previous.timestamp
     def probe1_ratio = asInt(readings.current.power1) / (asInt(readings.current.power1) + asInt(readings.current.power2))
-    def timestamp = new Date(state.lastMeterReadingTimestamp).format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC'))
+    def timestamp = new Date(state.lastMeterReadingTimestamp).format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
 
     def entry = [
-        "@timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
+        "@timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC')),
         electricity: [
             timestamp: timestamp,
             period_seconds: elapsed / 1000,

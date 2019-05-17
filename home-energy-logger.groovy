@@ -449,3 +449,15 @@ void elasticsearchResponse(hubResponse) {
     log.debug "hubResponse: status {$hubResponse.status}: {$hubResponse}"
 }
 
+Date parseTimestamp(str) {
+    def format = "yyyy-MM-dd'T'HH:mm:ss"
+
+    try { return Date.parse(format + "X", str) } catch (Exception e) {}
+    try { return Date.parse(format + ".SX", str) } catch (Exception e) {}
+    try { return Date.parse(format + ".SSX", str) } catch (Exception e) {}
+    try { return Date.parse(format + ".SSSX", str) }
+    catch (Exception e) {
+        throw e
+    }
+}
+

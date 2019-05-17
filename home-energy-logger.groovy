@@ -110,7 +110,7 @@ def loggingLoop() {
 // Store the latest data in elasticsearch
 def logCurrentState() {
     def indexName = indexName()
-    state.report['@timestamp'] = new Date().format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
+    state.report['@timestamp'] = formatDate(new Date())
 
     try {
         def request = new physicalgraph.device.HubAction(
@@ -144,7 +144,7 @@ def hvacHandler(evt) {
 
     def thermostat = evt.device
     def newState = evt.stringValue
-    def timestamp = evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
+    def timestamp = formatDate(evt.date)
 
     // Update the report object with the new furnace state
     state.report.hvac.heating.on = (newState == "heating") ? true : false
@@ -166,7 +166,8 @@ def coolingSetpointHandler(evt) {
 def climateHandler(evt, where) {
     log.info evt.descriptionText
     where.value = evt.value
-    where.timestamp = evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
+    where.timestamp = formatDate(evt.date)
+    log.debug "Updated climate value: ${where}"
 }
 
 // Stupid wrappers for the generic climate handler
@@ -179,13 +180,28 @@ def outdoorHumidityHandler(evt) { climateHandler(evt, state.report.climate.outdo
 def energyHandler(evt) {
     log.info evt.descriptionText
 
-    def currentEnergy = evt.value
-    def previousEnergy = state.report.electricity.total.kwh.cumulative
-    def previousTimestamp = parseTimestamp(state.report.electricity.total.kwh.timestamp)
-    def elapsed = evt.date - previousTimestamp
+    def timestamp = evt.date
+    def previousTimestamp = parseTimestamp(where.kwh.period_to)
 
-    state.report.electricity.total.kwh = [
-        timestamp: evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC')),
+    double elapsed = evt.date.getTime() - previousTimestamp.getTime()
+    double currentEnergy = asDouble(evt.value)
+    double previousEnergy = asDouble(where.kwh.cumulative)
+
+    // Ignore updates that are milliseconds apart
+    if (elapsed < 10) {return}
+
+    // Ignore updates of 1 Watt-hour or less
+    if (currentEnergy - previousEnergy < 0.001) {return}
+
+    // Before overwriting the current state, log it to Elasticsearch
+    if (parseTimestamp(state.report['@timestamp']) < previousTimestamp) {
+        logCurrentState()
+    }
+
+    where.kwh = [
+        period_to: formatDate(timestamp),
+        period_from: formatDate(previousTimestamp),
+        period_seconds: elapsed / 1000,
         cumulative: currentEnergy,
         period_total: currentEnergy - previousEnergy,
         per_month: (currentEnergy - previousEnergy) * 30 * 24 * 60 * 60 * 1000 / elapsed,
@@ -196,12 +212,17 @@ def energyHandler(evt) {
 def powerHandler(evt, where) {
     log.info evt.descriptionText
 
-    def timestamp = evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
+    def timestamp = formatDate(evt.date)
     def previousTimestamp = parseTimestamp(where.watts.timestamp)
 
     double currentPower = asInt(evt.value)
     double previousPower = asInt(where.watts.current)
     double elapsed = evt.date.getTime() - previousTimestamp.getTime()
+
+    // Before overwriting the current state, log it to Elasticsearch
+    if (parseTimestamp(state.report['@timestamp']) < previousTimestamp) {
+        logCurrentState()
+    }
 
     where.watts = [
         timestamp: timestamp,
@@ -233,10 +254,10 @@ def powerHandlerProbe2(evt) { powerHandler(evt, state.report.electricity.probe2)
 Map dataEntry(readings) {
     def elapsed = readings.current.timestamp - readings.previous.timestamp
     def probe1_ratio = asInt(readings.current.power1) / (asInt(readings.current.power1) + asInt(readings.current.power2))
-    def timestamp = new Date(state.lastMeterReadingTimestamp).format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
+    def timestamp = formatDate(new Date(state.lastMeterReadingTimestamp))
 
     def entry = [
-        "@timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC')),
+        "@timestamp": formatDate(new Date()),
         electricity: [
             timestamp: timestamp,
             period_seconds: elapsed / 1000,
@@ -362,5 +383,9 @@ Date parseTimestamp(str) {
     catch (Exception e) {
         throw e
     }
+}
+
+String formatDate(Date date) {
+    return date.format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
 }
 

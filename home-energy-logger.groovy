@@ -91,13 +91,14 @@ def initialize() {
     subscribe(outdoorHumidity, "humidity", outdoorHumidityHandler)
 
     // Subscribe to energy meter to detect updates
-    subscribe(theMeter, "energy", energyHandler)
+    subscribe(theMeter, "energy", energyHandlerTotal)
+    subscribe(theMeter, "energy1", energyHandlerProbe1)
+    subscribe(theMeter, "energy2", energyHandlerProbe2)
+
+    // Subscribe to the power meter for more updates
     subscribe(theMeter, "power", powerHandlerTotal)
     subscribe(theMeter, "power1", powerHandlerProbe1)
     subscribe(theMeter, "power2", powerHandlerProbe2)
-
-    // Set off the logging loop
-    loggingLoop()
 }
 
 // Refresh the energy meter. When it finishes, the subscribed attributes will cause
@@ -177,7 +178,7 @@ def outdoorTemperatureHandler(evt) { climateHandler(evt, state.report.climate.ou
 def outdoorHumidityHandler(evt) { climateHandler(evt, state.report.climate.outdoor.humidity) }
 
 // Update the report when there's a new energy reading
-def energyHandler(evt) {
+def energyHandler(evt, where) {
     log.info evt.descriptionText
 
     def timestamp = evt.date
@@ -208,6 +209,11 @@ def energyHandler(evt) {
     ]
 }
 
+// Stupid wrappers for the generic energy handler
+def energyHandlerTotal(evt) { energyHandler(evt, state.report.electricity.total) }
+def energyHandlerProbe1(evt) { energyHandler(evt, state.report.electricity.probe1) }
+def energyHandlerProbe2(evt) { energyHandler(evt, state.report.electricity.probe2) }
+
 // Generic handler for new power readings
 def powerHandler(evt, where) {
     log.info evt.descriptionText
@@ -230,19 +236,6 @@ def powerHandler(evt, where) {
         previous: previousPower,
         period_average: (currentPower + previousPower) / 2,
     ]
-
-    // We don't get a cumulative number for the probes, and we shouldn't
-    // try to estimate it, because the errors will propagate.
-    if (!where.kwh.cumulative) {
-        def kW = (currentPower + previousPower) / (2 * 1000)
-        def h  = elapsed / (1000 * 60 * 60)
-
-        where.kwh = [
-            timestamp: timestamp,
-            period_total: kW * h,
-            per_month: kW * 24 * 30,
-        ]
-    }
 }
 
 // Stupid wrappers for the generic handler

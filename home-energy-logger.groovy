@@ -123,7 +123,6 @@ def logCurrentState() {
             null,
             [ callback: elasticsearchResponse ]
         )
-        log.debug "request {$request}"
         sendHubCommand(request)
     }
     catch (Exception e) {

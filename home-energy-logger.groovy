@@ -334,7 +334,7 @@ int asInt(value) {
 }
 
 void elasticsearchResponse(hubResponse) {
-    log.debug "hubResponse: status {$hubResponse.status}: {$hubResponse}"
+    log.debug "hubResponse: status {$hubResponse.status}: {$hubResponse.json}"
 }
 
 Date parseTimestamp(str) {

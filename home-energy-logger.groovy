@@ -154,13 +154,13 @@ def hvacHandler(evt) {
 }
 
 def heatingSetpointHandler(evt) {
-	log.info evt.descriptionText
-	state.report.hvac.heating.setpoint = evt.value
+    log.info evt.descriptionText
+    state.report.hvac.heating.setpoint = evt.value
 }
 
 def coolingSetpointHandler(evt) {
-	log.info evt.descriptionText
-	state.report.hvac.cooling.setpoint = evt.value
+    log.info evt.descriptionText
+    state.report.hvac.cooling.setpoint = evt.value
 }
 
 // Generic handler for changes in temperature and humidity

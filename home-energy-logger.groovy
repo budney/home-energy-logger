@@ -197,10 +197,11 @@ def powerHandler(evt, where) {
     log.info evt.descriptionText
 
     def timestamp = evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SSSX", TimeZone.getTimeZone('UTC'))
-    def currentPower = asInt(evt.value)
-    def previousPower = asInt(where.watts.current)
     def previousTimestamp = parseTimestamp(where.watts.timestamp)
-    def elapsed = evt.date - previousTimestamp
+
+    double currentPower = asInt(evt.value)
+    double previousPower = asInt(where.watts.current)
+    double elapsed = evt.date.getTime() - previousTimestamp.getTime()
 
     where.watts = [
         timestamp: timestamp,
@@ -218,7 +219,7 @@ def powerHandler(evt, where) {
         where.kwh = [
             timestamp: timestamp,
             period_total: kW * h,
-            per_month: kW * h * 24 * 30,
+            per_month: kW * 24 * 30,
         ]
     }
 }

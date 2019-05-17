@@ -96,15 +96,13 @@ def initialize() {
     subscribe(outdoorHumidity, "humidity", getClimateHandler(state.report.climate.outdoor.humidity))
 
     // Subscribe to energy meter to detect updates
-    subscribe(theMeter, "energy", meterEvent)
+    subscribe(theMeter, "energy", energyHandler)
+    subscribe(theMeter, "power", getPowerHandler(state.electricity.total))
+    subscribe(theMeter, "power1", getPowerHandler(state.electricity.probe1))
+    subscribe(theMeter, "power2", getPowerHandler(state.electricity.probe2))
 
-    // Update energy consumption state
-    refreshMeter()
-}
-
-// Generic event handler for the thermostat
-def thermostatEvent(evt) {
-    readThermostat()
+    // Set off the logging loop
+    loggingLoop()
 }
 
 // From the thermostat, find out the indoor/outdoor temperatures and
@@ -134,26 +132,9 @@ def readThermostat() {
 
 // Refresh the energy meter. When it finishes, the subscribed attributes will cause
 // the new reading to be logged.
-def refreshMeter() {
-    theMeter.refresh()
-
-    // Do it again!
-    runIn(60 * interval, refreshMeter)
-}
-
-// Generic event handler for the meter
-def meterEvent(evt) {
-    oldReadMeter(theMeter)
-    readMeter(evt)
-}
-
-void readMeter(evt) {
-    if (!state.report) {
-        return
-    }
-
-    def meter = evt.device
-    def report = state.report
+def loggingLoop() {
+    logCurrentState()
+    runIn(60 * interval, logCurrentState)
 }
 
 // Check energy consumption on the home energy meter, emitting a log
@@ -196,7 +177,7 @@ void oldReadMeter(meter) {
         // Emit the stats in some useful way
         log.info "House using $power Watts, consumed $consumption kWh/month for last $minutes minutes"
         log.debug state
-        state.report = logEvent(["current": current, "previous": previous])
+        state.report = oldLogEvent(["current": current, "previous": previous])
     }
 
     // Log the state, just in case
@@ -213,8 +194,31 @@ void oldReadMeter(meter) {
     return
 }
 
+// Store the latest data in elasticsearch
+def logCurrentState() {
+    def indexName = indexName()
+
+    try {
+        def request = new physicalgraph.device.HubAction(
+            method: "POST",
+            path: "/$indexName/doc",
+            headers: [
+                "HOST": indexHost
+            ],
+            body: state.report
+            null,
+            [ callback: elasticsearchResponse ]
+        )
+        log.debug "request {$request}"
+        sendHubCommand(request)
+    }
+    catch (Exception e) {
+        log.error "Caught exception $e calling elasticsearch"
+    }
+}
+
 // Store the latest update in elasticsearch
-def logEvent(readings) {
+def oldLogEvent(readings) {
     def indexName = indexName()
     def logEntry = dataEntry(readings)
 
@@ -255,9 +259,6 @@ def hvacHandler(evt) {
     def newState = evt.stringValue
     def timestamp = evt.date.format("yyyy.MM.dd", TimeZone.getTimeZone('UTC'))
 
-    // Backward compatibility for now
-    oldReadMeter(thermostat)
-
     // Update the report object with the new furnace state
     state.report.hvac.heating.on = (newState == "heating") ? true : false
     state.report.hvac.cooling.on = (newState == "cooling") ? true : false
@@ -270,6 +271,74 @@ def getClimateHandler(where) {
         log.info evt.descriptionText
         where.value = evt.value
         where.timestamp = evt.date.format("yyyy.MM.dd", TimeZone.getTimeZone('UTC'))
+    }
+}
+
+// Update the report when there's a new energy reading
+def energyHandler(evt) {
+    log.info evt.descriptionText
+
+    def currentEnergy = evt.value
+    def previousEnergy = state.report.electricity.total.kwh.cumulative
+    def previousTimestamp = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SX", state.report.electricity.total.kwh.timestamp)
+    def elapsed = evt.date - previousTimestamp
+
+    state.report.electricity.total.kwh = [
+        timestamp: evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
+        cumulative: currentEnergy,
+        period_total: currentEnergy - previousEnergy,
+        per_month: (currentEnergy - previousEnergy) * 30 * 24 * 60 * 60 * 1000 / elapsed,
+    ]
+}
+
+// Update the report when there's a new power reading
+def powerHandler(evt) {
+    log.info evt.descriptionText
+
+    def currentPower = evt.value
+    def previousPower = state.report.electricity.total.watts.current
+    def previousTimestamp = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SX", state.report.electricity.total.watts.timestamp)
+    def elapsed = evt.date - previousTimestamp
+
+    state.report.electricity.total.watts = [
+        timestamp: evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
+        current: currentPower
+        previous: previousPower
+        period_average: (currentPower + previousPower) / 2
+    ]
+}
+
+// Update the appropriate part of the report when there's a new power reading
+def getPowerHandler(where) {
+
+    return {evt ->
+        log.info evt.descriptionText
+
+        def timestamp = evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC'))
+        def currentPower = evt.value
+        def previousPower = where.watts.current
+        def previousTimestamp = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SX", where.watts.timestamp)
+        def elapsed = evt.date - previousTimestamp
+
+        where.watts = [
+            timestamp: timestamp,
+            current: currentPower,
+            previous: previousPower,
+            period_average: (currentPower + previousPower) / 2,
+        ]
+
+        // We don't get a cumulative number for the probes, and we shouldn't
+        // try to estimate it, because the errors will propagate.
+        if (!where.kwh.cumulative) {
+            def kW = (currentPower + previousPower) / (2 * 1000)
+            def h  = elapsed / (1000 * 60 * 60)
+
+            where.kwh = [
+                timestamp: timestamp,
+                period_total: kW * h,
+                per_month: kW * h * 24 * 30,
+            ]
+        }
     }
 }
 
@@ -286,11 +355,13 @@ Map dataEntry(readings) {
             period_seconds: elapsed / 1000,
             total: [
                 kwh: [
+                    timestamp: timestamp
                     cumulative: readings.current.energy,
                     period_total: readings.current.energy - readings.previous.energy,
                     per_month: (readings.current.energy - readings.previous.energy) * 30 * 24 * 60 * 60 * 1000 / elapsed,
                 ],
                 watts: [
+                    timestamp: timestamp
                     current: readings.current.power,
                     previous: readings.previous.power,
                     period_average: (readings.current.energy - readings.previous.energy) * 1000 / ( elapsed / ( 1000 * 60 * 60 ) ),
@@ -298,10 +369,12 @@ Map dataEntry(readings) {
             ],
             probe1: [
                 kwh: [
+                    timestamp: timestamp
                     period_total: probe1_ratio * (readings.current.energy - readings.previous.energy),
                     per_month: probe1_ratio * (readings.current.energy - readings.previous.energy) * 30 * 24 * 60 * 60 * 1000 / elapsed,
                 ],
                 watts: [
+                    timestamp: timestamp
                     current: readings.current.power1,
                     previous: readings.previous.power1,
                     period_average: probe1_ratio * (readings.current.energy - readings.previous.energy) * 1000 / ( elapsed / ( 1000 * 60 * 60 ) ),
@@ -309,10 +382,12 @@ Map dataEntry(readings) {
             ],
             probe2: [
                 kwh: [
+                    timestamp: timestamp
                     period_total: (1 - probe1_ratio) * (readings.current.energy - readings.previous.energy),
                     per_month: (1 - probe1_ratio) * (readings.current.energy - readings.previous.energy) * 30 * 24 * 60 * 60 * 1000 / elapsed,
                 ],
                 watts: [
+                    timestamp: timestamp
                     current: readings.current.power2,
                     previous: readings.previous.power2,
                     period_average: (1 - probe1_ratio) * (readings.current.energy - readings.previous.energy) * 1000 / ( elapsed / ( 1000 * 60 * 60 ) ),

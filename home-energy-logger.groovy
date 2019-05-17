@@ -74,9 +74,6 @@ def updated() {
 }
 
 def initialize() {
-    // Update the state
-    oldReadMeter(theMeter)
-
     // Subscribe to thermostat state changes
     subscribe(theThermostat, "thermostatOperatingState.heating", hvacHandler)
     subscribe(theThermostat, "thermostatOperatingState.idle", hvacHandler)
@@ -103,93 +100,11 @@ def initialize() {
     loggingLoop()
 }
 
-// From the thermostat, find out the indoor/outdoor temperatures and
-// whether the furnace or AC are running.
-def readThermostat() {
-    // Humidity
-    state.indoorHumidity = indoorHumidity.currentValue("humidity")
-    state.outdoorHumidity = outdoorHumidity.currentValue("humidity")
-
-    // Temperature
-    state.indoorTemperature = indoorTemp.currentValue("temperature")
-    def outdoorTemperature = outdoorTemp.currentValue("temperature")
-    if (outdoorTemperature && 212 > outdoorTemperature) {
-        state.outdoorTemperature = outdoorTemperature
-    }
-
-    // Check if heat or AC is running:
-    if (theThermostat.currentValue("thermostatMode") == "off") {
-        state.heatingState = 0
-        state.coolingState = 0
-    }
-    else {
-        state.heatingState = theThermostat.currentValue("thermostatOperatingState") == "heating" ? true : false
-        state.coolingState = theThermostat.currentValue("thermostatOperatingState") == "cooling" ? true : false
-    }
-}
-
 // Refresh the energy meter. When it finishes, the subscribed attributes will cause
 // the new reading to be logged.
 def loggingLoop() {
     logCurrentState()
-    runIn(60 * interval, logCurrentState)
-}
-
-// Check energy consumption on the home energy meter, emitting a log
-// message giving statistics since the previous reading
-void oldReadMeter(meter) {
-    if (state.report) {
-        return
-    }
-
-    // Update thermostat info
-    readThermostat()
-
-    // Get the new readings from the meter
-    def current = [
-        timestamp: now(),
-        energy: meter.currentValue("energy"),
-        power: meter.currentValue("power"),
-        power1: meter.currentValue("power1"),
-        power2: meter.currentValue("power2"),
-    ]
-
-    // If we have previous readings, use them
-    if (state.lastMeterReadingTimestamp) {
-        // Get the readings from this app's state
-        def previous = [
-            timestamp: state.lastMeterReadingTimestamp,
-            energy: state.lastMeterReadingEnergy,
-            power: state.lastMeterReadingPower,
-            power1: state.lastMeterReadingPower1,
-            power2: state.lastMeterReadingPower2,
-        ]
-
-        // Compute useful stats
-        def elapsed = current.timestamp - previous.timestamp
-        def energy = current.energy - previous.energy
-        def consumption = Math.round( 100 * (energy * 30 * 24 * 60 * 60 * 1000 / elapsed) ) / 100
-        def minutes = Math.round( 100 * elapsed / (60 * 1000) ) / 100
-        def power = Math.round( 100 * energy * 1000 / ( elapsed / ( 1000 * 60 * 60 ) ) ) / 100
-
-        // Emit the stats in some useful way
-        log.info "House using $power Watts, consumed $consumption kWh/month for last $minutes minutes"
-        log.debug state
-        state.report = oldLogEvent(["current": current, "previous": previous])
-    }
-
-    // Log the state, just in case
-    log.debug "Old state: ${state}"
-
-    // Update the state
-    def report = state.report
-    state.removeAll {true}
-    state.report = state
-
-    // Log it again, just to check
-    log.debug "New state: ${state}"
-
-    return
+    runIn(60 * interval, loggingLoop)
 }
 
 // Store the latest data in elasticsearch
@@ -214,32 +129,6 @@ def logCurrentState() {
     catch (Exception e) {
         log.error "Caught exception $e calling elasticsearch"
     }
-}
-
-// Store the latest update in elasticsearch
-def oldLogEvent(readings) {
-    def indexName = indexName()
-    def logEntry = dataEntry(readings)
-
-    try {
-        def request = new physicalgraph.device.HubAction(
-            method: "POST",
-            path: "/$indexName/doc",
-            headers: [
-                "HOST": indexHost
-            ],
-            body: logEntry
-            null,
-            [ callback: elasticsearchResponse ]
-        )
-        log.debug "request {$request}"
-        sendHubCommand(request)
-    }
-    catch (Exception e) {
-        log.error "Caught exception $e calling elasticsearch"
-    }
-
-    return logEntry
 }
 
 // Derive the index name to store readings

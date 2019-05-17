@@ -126,7 +126,7 @@ def logCurrentState() {
         sendHubCommand(request)
     }
     catch (Exception e) {
-        log.error "Caught exception $e calling elasticsearch"
+        log.error "Caught exception $e sending to elasticsearch"
     }
 }
 

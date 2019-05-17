@@ -43,11 +43,11 @@ preferences {
     section("Thermostat") {
         input "theThermostat", "capability.thermostat", required: true
     }
-    section("Thermometers") f
+    section("Thermometers") {
         input "indoorTemp", "capability.temperatureMeasurement", required: false, title: "Indoors"
         input "outdoorTemp", "capability.temperatureMeasurement", required: false, title: "Outdoors"
     }
-    section("Hygrometers") f
+    section("Hygrometers") {
         input "indoorHumidity", "capability.relativeHumidityMeasurement", required: false, title: "Indoors"
         input "outdoorHumidity", "capability.relativeHumidityMeasurement", required: false, title: "Outdoors"
     }
@@ -205,7 +205,7 @@ def logCurrentState() {
             headers: [
                 "HOST": indexHost
             ],
-            body: state.report
+            body: state.report,
             null,
             [ callback: elasticsearchResponse ]
         )
@@ -300,11 +300,11 @@ def powerHandler(evt) {
     def previousTimestamp = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SX", state.report.electricity.total.watts.timestamp)
     def elapsed = evt.date - previousTimestamp
 
-    state.report.electricity.total.watts = [
-        timestamp: evt.date.format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
-        current: currentPower
-        previous: previousPower
-        period_average: (currentPower + previousPower) / 2
+    where.watts = [
+        timestamp: timestamp,
+        current: currentPower,
+        previous: previousPower,
+        period_average: (currentPower + previousPower) / 2,
     ]
 }
 
@@ -322,9 +322,8 @@ def getPowerHandler(where) {
 
         where.watts = [
             timestamp: timestamp,
-            current: currentPower,
-            previous: previousPower,
-            period_average: (currentPower + previousPower) / 2,
+            period_total: kW * h,
+            per_month: kW * h * 24 * 30,
         ]
 
         // We don't get a cumulative number for the probes, and we shouldn't
@@ -351,17 +350,17 @@ Map dataEntry(readings) {
     def entry = [
         "@timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ss.SX", TimeZone.getTimeZone('UTC')),
         electricity: [
-            timestamp: timestamp
+            timestamp: timestamp,
             period_seconds: elapsed / 1000,
             total: [
                 kwh: [
-                    timestamp: timestamp
+                    timestamp: timestamp,
                     cumulative: readings.current.energy,
                     period_total: readings.current.energy - readings.previous.energy,
                     per_month: (readings.current.energy - readings.previous.energy) * 30 * 24 * 60 * 60 * 1000 / elapsed,
                 ],
                 watts: [
-                    timestamp: timestamp
+                    timestamp: timestamp,
                     current: readings.current.power,
                     previous: readings.previous.power,
                     period_average: (readings.current.energy - readings.previous.energy) * 1000 / ( elapsed / ( 1000 * 60 * 60 ) ),
@@ -369,12 +368,12 @@ Map dataEntry(readings) {
             ],
             probe1: [
                 kwh: [
-                    timestamp: timestamp
+                    timestamp: timestamp,
                     period_total: probe1_ratio * (readings.current.energy - readings.previous.energy),
                     per_month: probe1_ratio * (readings.current.energy - readings.previous.energy) * 30 * 24 * 60 * 60 * 1000 / elapsed,
                 ],
                 watts: [
-                    timestamp: timestamp
+                    timestamp: timestamp,
                     current: readings.current.power1,
                     previous: readings.previous.power1,
                     period_average: probe1_ratio * (readings.current.energy - readings.previous.energy) * 1000 / ( elapsed / ( 1000 * 60 * 60 ) ),
@@ -382,12 +381,12 @@ Map dataEntry(readings) {
             ],
             probe2: [
                 kwh: [
-                    timestamp: timestamp
+                    timestamp: timestamp,
                     period_total: (1 - probe1_ratio) * (readings.current.energy - readings.previous.energy),
                     per_month: (1 - probe1_ratio) * (readings.current.energy - readings.previous.energy) * 30 * 24 * 60 * 60 * 1000 / elapsed,
                 ],
                 watts: [
-                    timestamp: timestamp
+                    timestamp: timestamp,
                     current: readings.current.power2,
                     previous: readings.previous.power2,
                     period_average: (1 - probe1_ratio) * (readings.current.energy - readings.previous.energy) * 1000 / ( elapsed / ( 1000 * 60 * 60 ) ),
@@ -395,7 +394,7 @@ Map dataEntry(readings) {
             ],
         ],
         hvac: [
-            timestamp: timestamp
+            timestamp: timestamp,
             heating: [
                 on: state.heatingState,
                 setpoint: theThermostat.currentValue("heatingSetpoint"),
@@ -409,21 +408,21 @@ Map dataEntry(readings) {
             indoor: [
                 temperature: [
                     value: state.indoorTemperature,
-                    timestamp: timestamp
+                    timestamp: timestamp,
                 ],
                 humidity: [
                     value: state.indoorHumidity,
-                    timestamp: timestamp
+                    timestamp: timestamp,
                 ]
             ],
             outdoor: [
                 temperature: [
                     value: state.outdoorTemperature,
-                    timestamp: timestamp
+                    timestamp: timestamp,
                 ],
                 humidity: [
                     value: state.outdoorHumidity,
-                    timestamp: timestamp
+                    timestamp: timestamp,
                 ]
             ],
         ]
